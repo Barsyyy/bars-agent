@@ -1,0 +1,6 @@
+.env 
+gmail_credentials.json 
+sheets_credentials.json 
+daily_count.json 
+instagram_queue.json 
+__pycache__/ 
