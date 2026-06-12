@@ -45,6 +45,42 @@ def _get_sheet():
             "backgroundColor": {"red": 0.1, "green": 0.1, "blue": 0.1},
             "textFormat": {"bold": True, "foregroundColor": {"red": 1, "green": 1, "blue": 1}}
         })
+        # Условное форматирование - красный для "Нет контактов"
+        sh.batch_update({
+            "requests": [{
+                "addConditionalFormatRule": {
+                    "rule": {
+                        "ranges": [{"sheetId": ws.id, "startRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": 16}],
+                        "booleanRule": {
+                            "condition": {
+                                "type": "TEXT_EQ",
+                                "values": [{"userEnteredValue": "Нет контактов"}]
+                            },
+                            "format": {
+                                "backgroundColor": {"red": 0.98, "green": 0.88, "blue": 0.88}
+                            }
+                        }
+                    },
+                    "index": 0
+                }
+            }, {
+                "addConditionalFormatRule": {
+                    "rule": {
+                        "ranges": [{"sheetId": ws.id, "startRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": 16}],
+                        "booleanRule": {
+                            "condition": {
+                                "type": "TEXT_EQ",
+                                "values": [{"userEnteredValue": "Отправлено"}]
+                            },
+                            "format": {
+                                "backgroundColor": {"red": 0.85, "green": 0.95, "blue": 0.85}
+                            }
+                        }
+                    },
+                    "index": 1
+                }
+            }]
+        })
     return ws
 
 
