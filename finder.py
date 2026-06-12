@@ -17,13 +17,7 @@ HEADERS = {
 }
 
 
-# ─── Поиск новых компаний через Claude + web ────────────────────────────────
-
 def find_new_companies(existing_names: list[str], count: int = 5) -> list[dict]:
-    """
-    Просит Claude найти реальные компании.
-    Возвращает список с полями: company, region, niche, priority, website, notes
-    """
     exclude = ", ".join(existing_names[-50:]) if existing_names else "нет"
 
     prompt = f"""Ты агент поиска лидов для студии Bars Production (AI-видео и 3D реклама, Алматы).
@@ -52,7 +46,7 @@ def find_new_companies(existing_names: list[str], count: int = 5) -> list[dict]:
 ]"""
 
     response = client.messages.create(
-        model="claude-opus-4-5-20251101",
+        model="claude-sonnet-4-6",
         max_tokens=2000,
         messages=[{"role": "user", "content": prompt}]
     )
@@ -68,19 +62,12 @@ def find_new_companies(existing_names: list[str], count: int = 5) -> list[dict]:
         return []
 
 
-# ─── Парсинг сайта компании ──────────────────────────────────────────────────
-
 def scrape_website(url: str) -> dict:
-    """
-    Парсит сайт компании, ищет email и Instagram.
-    Возвращает: { email, instagram, found }
-    """
     result = {"email": "", "instagram": "", "found": False}
 
     if not url or not url.startswith("http"):
         return result
 
-    # Страницы где обычно есть контакты
     pages_to_check = [url, url.rstrip("/") + "/contacts", url.rstrip("/") + "/contact", url.rstrip("/") + "/about"]
 
     for page_url in pages_to_check:
@@ -93,17 +80,14 @@ def scrape_website(url: str) -> dict:
             text = soup.get_text(" ", strip=True)
             html = r.text
 
-            # Поиск email
             if not result["email"]:
                 emails = re.findall(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}", text)
-                # Фильтруем мусор
                 skip = {"example", "yourdomain", "domain", "email", "mail", "test", "noreply", "no-reply", "support@sentry"}
                 clean = [e for e in emails if not any(s in e.lower() for s in skip)]
                 if clean:
                     result["email"] = clean[0]
                     result["found"] = True
 
-            # Поиск Instagram
             if not result["instagram"]:
                 ig = re.findall(r'instagram\.com/([a-zA-Z0-9_.]+)', html)
                 ig = [h for h in ig if h not in ("p", "reel", "stories", "explore", "accounts", "shoppingbag")]
@@ -123,13 +107,7 @@ def scrape_website(url: str) -> dict:
     return result
 
 
-# ─── Основная функция обогащения лида ───────────────────────────────────────
-
 def enrich_lead(lead: dict) -> dict:
-    """
-    Принимает лид с полем website, добавляет email и instagram.
-    Если ничего не нашёл — поля остаются пустыми (не выдумываем).
-    """
     website = lead.get("website", "")
     contacts = scrape_website(website)
 
@@ -142,12 +120,7 @@ def enrich_lead(lead: dict) -> dict:
     return lead
 
 
-# ─── Поиск + обогащение пачки новых лидов ───────────────────────────────────
-
 def find_and_enrich(existing_names: list[str], count: int = 5) -> list[dict]:
-    """
-    Полный цикл: находит компании → парсит их сайты → возвращает обогащённые лиды.
-    """
     print(f"[finder] Ищу {count} новых компаний...")
     companies = find_new_companies(existing_names, count)
     print(f"[finder] Найдено: {len(companies)}")
@@ -156,6 +129,6 @@ def find_and_enrich(existing_names: list[str], count: int = 5) -> list[dict]:
     for c in companies:
         lead = enrich_lead(c)
         enriched.append(lead)
-        time.sleep(1)  # вежливо к серверам
+        time.sleep(1)
 
     return enriched
