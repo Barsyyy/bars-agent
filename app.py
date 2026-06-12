@@ -41,9 +41,17 @@ tr:last-child td { border-bottom: none; }
 .badge-nocontact { background: #1e1e1e; color: #666; }
 .two-col { display: grid; grid-template-columns: 1fr; gap: 20px; padding: 0 24px 24px; }
 @media(min-width:700px){ .two-col { grid-template-columns: 1fr 1fr; } }
-.ig-item { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid #1e1e1e; }
+.ig-item { padding: 14px; border-bottom: 1px solid #1e1e1e; }
 .ig-item:last-child { border-bottom: none; }
+.ig-top { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 .ig-avatar { width: 36px; height: 36px; border-radius: 50%; background: #1e2a4a; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #4f8ef7; flex-shrink: 0; }
+.ig-handle { font-size: 13px; font-weight: 500; color: #e8e8e8; }
+.ig-company { font-size: 12px; color: #666; }
+.ig-actions { display: flex; gap: 8px; }
+.ig-btn { font-size: 12px; padding: 6px 12px; border-radius: 6px; border: 1px solid #333; background: transparent; color: #e8e8e8; cursor: pointer; }
+.ig-btn:hover { background: #222; }
+.ig-btn-blue { border-color: #4f8ef7; color: #4f8ef7; }
+.ig-pitch { background: #0d0d0d; border: 1px solid #222; border-radius: 6px; padding: 10px; font-size: 12px; color: #aaa; line-height: 1.6; margin-top: 10px; white-space: pre-wrap; display: none; }
 .progress-wrap { margin-bottom: 14px; }
 .progress-label { display: flex; justify-content: space-between; font-size: 12px; color: #666; margin-bottom: 5px; }
 .progress-track { height: 4px; background: #222; border-radius: 2px; }
@@ -51,6 +59,7 @@ tr:last-child td { border-bottom: none; }
 .log-box { background: #0d0d0d; border: 1px solid #1e1e1e; border-radius: 10px; padding: 14px; font-family: monospace; font-size: 12px; color: #4caf50; max-height: 260px; overflow-y: auto; white-space: pre-wrap; }
 .spinner { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block; }
 @keyframes spin { to { transform: rotate(360deg); } }
+.copied { color: #4caf50 !important; border-color: #4caf50 !important; }
 </style>
 </head>
 <body>
@@ -107,6 +116,20 @@ function badge(s){
   return '<span class="badge badge-nocontact">'+s+'</span>';
 }
 function initials(n){ return (n||"?").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase(); }
+
+function copyText(btn, text) {
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = "✓ Скопировано";
+    btn.classList.add("copied");
+    setTimeout(() => { btn.textContent = "Скопировать DM"; btn.classList.remove("copied"); }, 2000);
+  });
+}
+
+function togglePitch(id) {
+  const el = document.getElementById("pitch-" + id);
+  el.style.display = el.style.display === "none" ? "block" : "none";
+}
+
 async function loadData(){
   try{
     const d = await (await fetch("/api/data")).json();
@@ -118,7 +141,29 @@ async function loadData(){
     document.getElementById("ig-lim").textContent=d.ig_sent+" / 3";
     document.getElementById("email-bar").style.width=Math.round(d.email_sent/20*100)+"%";
     document.getElementById("ig-bar").style.width=Math.round(d.ig_sent/3*100)+"%";
-    document.getElementById("ig-list").innerHTML=d.ig_queue.length?d.ig_queue.map(i=>`<div class="ig-item"><div class="ig-avatar">${initials(i.company)}</div><div><div style="font-size:13px;font-weight:500;">${i.instagram}</div><div style="font-size:12px;color:#666;">${i.company}</div></div></div>`).join(""):'<div style="padding:20px;color:#555;font-size:13px;">Очередь пуста</div>';
+
+    const igHtml = d.ig_queue.length ? d.ig_queue.map((i,idx) => {
+      const handle = i.instagram || "";
+      const igUrl = "https://instagram.com/" + handle.replace("@","");
+      const pitch = i.pitch || "";
+      return `<div class="ig-item">
+        <div class="ig-top">
+          <div class="ig-avatar">${initials(i.company)}</div>
+          <div style="flex:1">
+            <div class="ig-handle">${handle}</div>
+            <div class="ig-company">${i.company}</div>
+          </div>
+        </div>
+        <div class="ig-actions">
+          <a href="${igUrl}" target="_blank" class="ig-btn ig-btn-blue">Открыть Instagram</a>
+          ${pitch ? `<button class="ig-btn" onclick="togglePitch('${idx}')">Показать текст</button>
+          <button class="ig-btn" onclick="copyText(this, \`${pitch.replace(/`/g,"'")}\`)">Скопировать DM</button>` : ""}
+        </div>
+        ${pitch ? `<div class="ig-pitch" id="pitch-${idx}">${pitch}</div>` : ""}
+      </div>`;
+    }).join("") : '<div style="padding:20px;color:#555;font-size:13px;">Очередь пуста</div>';
+    document.getElementById("ig-list").innerHTML = igHtml;
+
     document.getElementById("leads-body").innerHTML=d.leads.length?d.leads.slice().reverse().slice(0,20).map(l=>`<tr><td style="font-weight:500;">${l["Компания"]||"—"}</td><td style="color:#666;">${l["Ниша"]||"—"}</td><td style="color:#666;font-size:12px;">${l["Email"]||"—"}</td><td style="color:#4f8ef7;font-size:12px;">${l["Instagram"]||"—"}</td><td>${badge(l["Статус"])}</td><td style="color:#444;font-size:12px;">${l["Дата добавления"]||"—"}</td></tr>`).join(""):'<tr><td colspan="6" style="text-align:center;color:#555;padding:24px;">Нет лидов</td></tr>';
   }catch(e){}
 }
@@ -173,7 +218,16 @@ def api_data():
         ig_queue = []
         if os.path.exists("instagram_queue.json"):
             with open("instagram_queue.json", encoding="utf-8") as f:
-                ig_queue = [i for i in json.load(f) if not i.get("sent")]
+                raw = json.load(f)
+                ig_queue = [i for i in raw if not i.get("sent")]
+        
+        # Добавляем питч из Google Sheets
+        leads_dict = {l.get("Instagram","").strip(): l for l in leads if l.get("Instagram")}
+        for item in ig_queue:
+            ig = item.get("instagram","").strip()
+            if ig in leads_dict:
+                item["pitch"] = leads_dict[ig].get("Питч (Instagram)","")
+
         no_contact = sum(1 for l in leads if l.get("Статус") == "Нет контактов")
         return jsonify({"total": len(leads), "email_sent": counts.get("email",0), "ig_sent": counts.get("instagram",0), "ig_queue_count": len(ig_queue), "ig_queue": ig_queue, "no_contact": no_contact, "leads": leads})
     except Exception as e:
