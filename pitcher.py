@@ -74,7 +74,7 @@ def generate_pitch(lead: dict, channel: str = "email") -> str:
 Ответь только текстом письма/сообщения, без пояснений и кавычек."""
 
     response = client.messages.create(
-        model="claude-opus-4-5-20251101",
+        model="claude-haiku-4-5-20251001",
         max_tokens=600,
         messages=[{"role": "user", "content": prompt}]
     )
