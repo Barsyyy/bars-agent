@@ -1,8 +1,9 @@
 """
 sheets.py - Чтение и запись лидов в Google Sheets.
-Таблица: строки = лиды, колонки = поля CRM.
 """
 
+import os
+import json
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import date
@@ -28,7 +29,11 @@ STATUS_NO_CONTACT = "Нет контактов"
 
 
 def _get_sheet():
-    creds = Credentials.from_service_account_file(config.GOOGLE_SHEETS_CREDENTIALS, scopes=SCOPES)
+    creds_json = os.environ.get("GOOGLE_SHEETS_CREDENTIALS_JSON")
+    if creds_json:
+        creds = Credentials.from_service_account_info(json.loads(creds_json), scopes=SCOPES)
+    else:
+        creds = Credentials.from_service_account_file(config.GOOGLE_SHEETS_CREDENTIALS, scopes=SCOPES)
     gc = gspread.authorize(creds)
     sh = gc.open_by_key(config.GOOGLE_SHEETS_ID)
     try:
@@ -36,7 +41,6 @@ def _get_sheet():
     except gspread.exceptions.WorksheetNotFound:
         ws = sh.add_worksheet(title="Лиды", rows=1000, cols=len(COLUMNS))
         ws.append_row(COLUMNS)
-        # Форматирование заголовка
         ws.format("A1:P1", {
             "backgroundColor": {"red": 0.1, "green": 0.1, "blue": 0.1},
             "textFormat": {"bold": True, "foregroundColor": {"red": 1, "green": 1, "blue": 1}}
@@ -45,26 +49,20 @@ def _get_sheet():
 
 
 def get_all_leads() -> list[dict]:
-    """Читает все лиды из Sheets. Возвращает список dict."""
     ws = _get_sheet()
     records = ws.get_all_records()
     return records
 
 
 def get_existing_names() -> list[str]:
-    """Возвращает только названия компаний (для дедупликации)."""
     leads = get_all_leads()
     return [l.get("Компания", "") for l in leads if l.get("Компания")]
 
 
 def add_lead(lead: dict) -> int:
-    """
-    Добавляет новый лид в таблицу.
-    Возвращает номер строки.
-    """
     ws = _get_sheet()
     all_rows = ws.get_all_values()
-    new_id = len(all_rows)  # строка 1 — заголовок
+    new_id = len(all_rows)
 
     contacts_found = "✓" if lead.get("contacts_found") else "—"
     status = STATUS_NO_CONTACT if not lead.get("contacts_found") else STATUS_NOT_SENT
@@ -84,7 +82,7 @@ def add_lead(lead: dict) -> int:
         lead.get("pitch_email", ""),
         lead.get("pitch_instagram", ""),
         str(date.today()),
-        "",  # дата отправки
+        "",
         lead.get("notes", ""),
     ]
 
@@ -94,19 +92,16 @@ def add_lead(lead: dict) -> int:
 
 
 def update_status(company_name: str, status: str, sent_date: str = None):
-    """Обновляет статус лида по названию компании."""
     ws = _get_sheet()
     records = ws.get_all_records()
 
-    for i, row in enumerate(records, start=2):  # строка 2 = первый лид
+    for i, row in enumerate(records, start=2):
         if row.get("Компания") == company_name:
             status_col = COLUMNS.index("Статус") + 1
             ws.update_cell(i, status_col, status)
-
             if sent_date:
                 date_col = COLUMNS.index("Дата отправки") + 1
                 ws.update_cell(i, date_col, sent_date)
-
             print(f"[sheets] ✓ Статус обновлён: {company_name} → {status}")
             return True
 
@@ -115,7 +110,6 @@ def update_status(company_name: str, status: str, sent_date: str = None):
 
 
 def update_pitch(company_name: str, pitch_email: str = None, pitch_instagram: str = None):
-    """Сохраняет сгенерированные питчи в таблицу."""
     ws = _get_sheet()
     records = ws.get_all_records()
 
@@ -128,12 +122,10 @@ def update_pitch(company_name: str, pitch_email: str = None, pitch_instagram: st
                 col = COLUMNS.index("Питч (Instagram)") + 1
                 ws.update_cell(i, col, pitch_instagram)
             return True
-
     return False
 
 
 def get_leads_to_contact() -> list[dict]:
-    """Возвращает лиды со статусом 'Не писал' у которых есть email или Instagram."""
     leads = get_all_leads()
     return [
         l for l in leads
