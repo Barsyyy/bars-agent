@@ -1,12 +1,15 @@
 """
 sender.py - Отправка через Gmail API (не SMTP).
+
 SMTP заблокирован Railway, поэтому используем официальный Gmail API.
-Счётчики хранятся в Google Sheets (не в файлах - они сбрасываются при рестарте).
+
+Счётчики хранятся в Google Sheets с кешем на 60 секунд.
 """
 
 import os
 import json
 import base64
+import time
 from datetime import date
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -25,7 +28,11 @@ SCOPES_SHEETS = [
     "https://www.googleapis.com/auth/drive",
 ]
 
-# ── Google Sheets для счётчиков ──────────────────────────────────────────────
+# Кеш счётчиков - читаем Sheets не чаще раза в 60 секунд
+_counts_cache = None
+_counts_cache_time = 0
+_CACHE_TTL = 60
+
 
 def _get_counters_sheet():
     creds_json = os.environ.get("GOOGLE_SHEETS_CREDENTIALS_JSON")
@@ -48,23 +55,38 @@ def _get_counters_sheet():
 
 
 def _load_counts():
+    global _counts_cache, _counts_cache_time
     today = str(date.today())
+
+    if _counts_cache and _counts_cache.get("date") == today and (time.time() - _counts_cache_time) < _CACHE_TTL:
+        return _counts_cache
+
     try:
         ws = _get_counters_sheet()
         records = ws.get_all_records()
         for row in records:
             if str(row.get("Дата")) == today:
-                return {
+                result = {
                     "date": today,
                     "email": int(row.get("Email", 0)),
                     "instagram": int(row.get("Instagram", 0)),
                 }
+                _counts_cache = result
+                _counts_cache_time = time.time()
+                return result
     except Exception as e:
         print(f"[sender] Ошибка чтения счётчиков: {e}")
-    return {"date": today, "email": 0, "instagram": 0}
+        if _counts_cache and _counts_cache.get("date") == today:
+            return _counts_cache
+
+    result = {"date": today, "email": 0, "instagram": 0}
+    _counts_cache = result
+    _counts_cache_time = time.time()
+    return result
 
 
 def _save_counts(counts):
+    global _counts_cache, _counts_cache_time
     today = str(date.today())
     try:
         ws = _get_counters_sheet()
@@ -72,8 +94,12 @@ def _save_counts(counts):
         for i, row in enumerate(records, start=2):
             if str(row.get("Дата")) == today:
                 ws.update(f"A{i}:C{i}", [[today, counts["email"], counts["instagram"]]])
+                _counts_cache = counts
+                _counts_cache_time = time.time()
                 return
         ws.append_row([today, counts["email"], counts["instagram"]])
+        _counts_cache = counts
+        _counts_cache_time = time.time()
     except Exception as e:
         print(f"[sender] Ошибка сохранения счётчиков: {e}")
 
@@ -87,7 +113,7 @@ def can_send_instagram():
 
 
 def increment_count(channel):
-    counts = _load_counts()
+    counts = dict(_load_counts())
     counts[channel] = counts.get(channel, 0) + 1
     _save_counts(counts)
 
@@ -99,22 +125,15 @@ def get_today_counts():
 # ── Gmail API ────────────────────────────────────────────────────────────────
 
 def _get_gmail_service():
-    """
-    Создаём Gmail сервис через OAuth2 токен.
-    Токен хранится в переменной окружения GMAIL_TOKEN_JSON (JSON строка).
-    """
     token_json = os.environ.get("GMAIL_TOKEN_JSON")
     if not token_json:
-        # Пробуем файл
         token_file = config.GMAIL_TOKEN_FILE
         if os.path.exists(token_file):
             with open(token_file) as f:
                 token_json = f.read()
         else:
-            raise Exception(
-                "Нет GMAIL_TOKEN_JSON в env и нет файла gmail_token.json. "
-                "Запусти get_gmail_token.py локально чтобы получить токен."
-            )
+            raise Exception("Нет GMAIL_TOKEN_JSON в env и нет файла gmail_token.json.")
+
     creds_data = json.loads(token_json)
     creds = Credentials(
         token=creds_data.get("token"),
@@ -131,9 +150,11 @@ def send_email(to: str, subject: str, body: str) -> bool:
     if not can_send_email():
         print(f"[sender] Лимит email исчерпан")
         return False
+
     if not to or "@" not in to:
         print(f"[sender] Невалидный email: {to}")
         return False
+
     try:
         service = _get_gmail_service()
 
@@ -144,14 +165,12 @@ def send_email(to: str, subject: str, body: str) -> bool:
         msg.attach(MIMEText(body, "plain", "utf-8"))
 
         raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
-        service.users().messages().send(
-            userId="me",
-            body={"raw": raw}
-        ).execute()
+        service.users().messages().send(userId="me", body={"raw": raw}).execute()
 
         increment_count("email")
         print(f"[sender] Email отправлен -> {to}")
         return True
+
     except HttpError as e:
         print(f"[sender] Gmail API ошибка: {e}")
         return False
@@ -167,6 +186,7 @@ def add_to_instagram_queue(lead, message):
     if os.path.exists(INSTAGRAM_QUEUE_FILE):
         with open(INSTAGRAM_QUEUE_FILE, encoding="utf-8") as f:
             queue = json.load(f)
+
     queue.append({
         "company": lead.get("company"),
         "instagram": lead.get("instagram"),
@@ -174,8 +194,10 @@ def add_to_instagram_queue(lead, message):
         "date_added": str(date.today()),
         "sent": False,
     })
+
     with open(INSTAGRAM_QUEUE_FILE, "w", encoding="utf-8") as f:
         json.dump(queue, f, ensure_ascii=False, indent=2)
+
     print(f"[sender] Instagram DM -> {lead.get('instagram')}")
 
 
