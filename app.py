@@ -1,12 +1,14 @@
 import threading
 import json
 import os
-from datetime import date
+from datetime import date, datetime
 from flask import Flask, jsonify, render_template_string
+import time
 
 app = Flask(__name__)
 agent_log = []
 agent_running = False
+last_run_date = None  # дата последнего запуска агента
 
 HTML = """<!DOCTYPE html>
 <html lang="ru">
@@ -60,15 +62,16 @@ tr:last-child td { border-bottom: none; }
 .spinner { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .copied { color: #4caf50 !important; border-color: #4caf50 !important; }
+.auto-badge { font-size: 11px; color: #4caf50; background: #1a2e1a; padding: 3px 8px; border-radius: 20px; margin-left: 10px; }
 </style>
 </head>
 <body>
 <div class="header">
   <div>
-    <div class="logo">Bars <span>CRM</span></div>
+    <div class="logo">Bars <span>CRM</span> <span class="auto-badge" id="auto-badge">Авто: 09:00</span></div>
     <div class="tag">@dollskills3dart — Lead Agent</div>
   </div>
-  <button class="run-btn" id="runBtn" onclick="runAgent()">▶ Запустить агента</button>
+  <button class="run-btn" id="runBtn" onclick="runAgent()">&#9654; Запустить агента</button>
 </div>
 <div class="metrics">
   <div class="metric"><div class="metric-label">Всего лидов</div><div class="metric-value" id="m-total">—</div></div>
@@ -110,26 +113,23 @@ tr:last-child td { border-bottom: none; }
 </div>
 <script>
 function badge(s){
-  if(!s) return '<span class="badge badge-nocontact">—</span>';
+  if(!s) return '<span class="badge badge-nocontact">-</span>';
   if(s==="Отправлено") return '<span class="badge badge-sent">Отправлено</span>';
   if(s.includes("Instagram")) return '<span class="badge badge-queue">Instagram</span>';
   return '<span class="badge badge-nocontact">'+s+'</span>';
 }
 function initials(n){ return (n||"?").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase(); }
-
 function copyText(btn, text) {
   navigator.clipboard.writeText(text).then(() => {
-    btn.textContent = "✓ Скопировано";
+    btn.textContent = "Скопировано";
     btn.classList.add("copied");
     setTimeout(() => { btn.textContent = "Скопировать DM"; btn.classList.remove("copied"); }, 2000);
   });
 }
-
 function togglePitch(id) {
   const el = document.getElementById("pitch-" + id);
   el.style.display = el.style.display === "none" ? "block" : "none";
 }
-
 async function loadData(){
   try{
     const d = await (await fetch("/api/data")).json();
@@ -141,11 +141,11 @@ async function loadData(){
     document.getElementById("ig-lim").textContent=d.ig_sent+" / 3";
     document.getElementById("email-bar").style.width=Math.round(d.email_sent/20*100)+"%";
     document.getElementById("ig-bar").style.width=Math.round(d.ig_sent/3*100)+"%";
-
     const igHtml = d.ig_queue.length ? d.ig_queue.map((i,idx) => {
       const handle = i.instagram || "";
       const igUrl = "https://instagram.com/" + handle.replace("@","");
       const pitch = i.pitch || "";
+      const pitchSafe = pitch.replace(/`/g, "'");
       return `<div class="ig-item">
         <div class="ig-top">
           <div class="ig-avatar">${initials(i.company)}</div>
@@ -157,13 +157,12 @@ async function loadData(){
         <div class="ig-actions">
           <a href="${igUrl}" target="_blank" class="ig-btn ig-btn-blue">Открыть Instagram</a>
           ${pitch ? `<button class="ig-btn" onclick="togglePitch('${idx}')">Показать текст</button>
-          <button class="ig-btn" onclick="copyText(this, \`${pitch.replace(/`/g,"'")}\`)">Скопировать DM</button>` : ""}
+          <button class="ig-btn" onclick="copyText(this, \`${pitchSafe}\`)">Скопировать DM</button>` : ""}
         </div>
         ${pitch ? `<div class="ig-pitch" id="pitch-${idx}">${pitch}</div>` : ""}
       </div>`;
     }).join("") : '<div style="padding:20px;color:#555;font-size:13px;">Очередь пуста</div>';
     document.getElementById("ig-list").innerHTML = igHtml;
-
     document.getElementById("leads-body").innerHTML=d.leads.length?d.leads.slice().reverse().slice(0,20).map(l=>`<tr><td style="font-weight:500;">${l["Компания"]||"—"}</td><td style="color:#666;">${l["Ниша"]||"—"}</td><td style="color:#666;font-size:12px;">${l["Email"]||"—"}</td><td style="color:#4f8ef7;font-size:12px;">${l["Instagram"]||"—"}</td><td>${badge(l["Статус"])}</td><td style="color:#444;font-size:12px;">${l["Дата добавления"]||"—"}</td></tr>`).join(""):'<tr><td colspan="6" style="text-align:center;color:#555;padding:24px;">Нет лидов</td></tr>';
   }catch(e){}
 }
@@ -184,7 +183,7 @@ async function runAgent(){
     setTimeout(pollStatus,2000);
   }catch(e){
     btn.disabled=false;
-    btn.innerHTML='▶ Запустить агента';
+    btn.innerHTML='&#9654; Запустить агента';
   }
 }
 async function pollStatus(){
@@ -195,7 +194,7 @@ async function pollStatus(){
     else{
       const btn=document.getElementById("runBtn");
       btn.disabled=false;
-      btn.innerHTML='▶ Запустить агента';
+      btn.innerHTML='&#9654; Запустить агента';
       loadData();
     }
   }catch(e){}
@@ -205,9 +204,48 @@ loadData(); loadLog(); setInterval(loadData,30000);
 </body>
 </html>"""
 
+
+def _run_agent_thread():
+    global agent_running, agent_log
+    agent_running = True
+    agent_log = []
+    try:
+        import agent as agent_module
+        import io
+        from contextlib import redirect_stdout
+        f = io.StringIO()
+        with redirect_stdout(f):
+            agent_module.run()
+        agent_log = f.getvalue().splitlines()
+    except Exception as e:
+        agent_log = [f"Ошибка: {e}"]
+    finally:
+        agent_running = False
+
+
+def _scheduler():
+    """Фоновый поток - запускает агента каждый день в 09:00 по Алматы (UTC+5)."""
+    global last_run_date
+    print("[scheduler] Запущен - агент будет стартовать в 09:00 Алматы")
+    while True:
+        now = datetime.utcnow()
+        almaty_hour = (now.hour + 5) % 24
+        today = str(date.today())
+        if almaty_hour == 9 and last_run_date != today and not agent_running:
+            print(f"[scheduler] Автозапуск агента {today}")
+            last_run_date = today
+            threading.Thread(target=_run_agent_thread, daemon=True).start()
+        time.sleep(60)
+
+
+# Запускаем scheduler при старте приложения
+threading.Thread(target=_scheduler, daemon=True).start()
+
+
 @app.route("/")
 def index():
     return render_template_string(HTML)
+
 
 @app.route("/api/data")
 def api_data():
@@ -220,50 +258,44 @@ def api_data():
             with open("instagram_queue.json", encoding="utf-8") as f:
                 raw = json.load(f)
                 ig_queue = [i for i in raw if not i.get("sent")]
-        
-        # Добавляем питч из Google Sheets
-        leads_dict = {l.get("Instagram","").strip(): l for l in leads if l.get("Instagram")}
+        leads_dict = {l.get("Instagram", "").strip(): l for l in leads if l.get("Instagram")}
         for item in ig_queue:
-            ig = item.get("instagram","").strip()
+            ig = item.get("instagram", "").strip()
             if ig in leads_dict:
-                item["pitch"] = leads_dict[ig].get("Питч (Instagram)","")
-
+                item["pitch"] = leads_dict[ig].get("Питч (Instagram)", "")
         no_contact = sum(1 for l in leads if l.get("Статус") == "Нет контактов")
-        return jsonify({"total": len(leads), "email_sent": counts.get("email",0), "ig_sent": counts.get("instagram",0), "ig_queue_count": len(ig_queue), "ig_queue": ig_queue, "no_contact": no_contact, "leads": leads})
+        return jsonify({
+            "total": len(leads),
+            "email_sent": counts.get("email", 0),
+            "ig_sent": counts.get("instagram", 0),
+            "ig_queue_count": len(ig_queue),
+            "ig_queue": ig_queue,
+            "no_contact": no_contact,
+            "leads": leads,
+        })
     except Exception as e:
-        return jsonify({"error": str(e), "total": 0, "email_sent": 0, "ig_sent": 0, "ig_queue_count": 0, "ig_queue": [], "no_contact": 0, "leads": []})
+        return jsonify({"error": str(e), "total": 0, "email_sent": 0, "ig_sent": 0,
+                        "ig_queue_count": 0, "ig_queue": [], "no_contact": 0, "leads": []})
+
 
 @app.route("/api/log")
 def api_log():
     return jsonify({"log": "\n".join(agent_log[-100:]) if agent_log else "Агент ещё не запускался"})
 
+
 @app.route("/api/status")
 def api_status():
     return jsonify({"running": agent_running})
 
+
 @app.route("/api/run", methods=["POST"])
 def api_run():
-    global agent_running, agent_log
+    global agent_running
     if agent_running:
         return jsonify({"status": "already_running"})
-    def run_agent():
-        global agent_running, agent_log
-        agent_running = True
-        agent_log = []
-        try:
-            import agent as agent_module
-            import io
-            from contextlib import redirect_stdout
-            f = io.StringIO()
-            with redirect_stdout(f):
-                agent_module.run()
-            agent_log = f.getvalue().splitlines()
-        except Exception as e:
-            agent_log = [f"Ошибка: {e}"]
-        finally:
-            agent_running = False
-    threading.Thread(target=run_agent, daemon=True).start()
+    threading.Thread(target=_run_agent_thread, daemon=True).start()
     return jsonify({"status": "started"})
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
