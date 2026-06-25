@@ -8,7 +8,6 @@ import time
 app = Flask(__name__)
 agent_log = []
 agent_running = False
-last_run_date = None  # дата последнего запуска агента
 
 HTML = """<!DOCTYPE html>
 <html lang="ru">
@@ -23,8 +22,10 @@ body { font-family: -apple-system, sans-serif; background: #0f0f0f; color: #e8e8
 .logo { font-size: 16px; font-weight: 600; color: #fff; }
 .logo span { color: #4f8ef7; }
 .tag { font-size: 11px; color: #666; margin-top: 2px; }
+.btn-group { display: flex; gap: 8px; }
 .run-btn { background: #4f8ef7; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; font-size: 13px; cursor: pointer; }
 .run-btn:disabled { background: #2a2a2a; color: #555; cursor: not-allowed; }
+.run-btn-green { background: #2e7d32; }
 .metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; padding: 20px 24px; }
 @media(min-width:600px){ .metrics { grid-template-columns: repeat(4,1fr); } }
 .metric { background: #1a1a1a; border-radius: 10px; padding: 14px; border: 1px solid #222; }
@@ -62,22 +63,26 @@ tr:last-child td { border-bottom: none; }
 .spinner { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .copied { color: #4caf50 !important; border-color: #4caf50 !important; }
-.auto-badge { font-size: 11px; color: #4caf50; background: #1a2e1a; padding: 3px 8px; border-radius: 20px; margin-left: 10px; }
+.schedule-info { font-size: 11px; color: #555; margin-top: 6px; }
 </style>
 </head>
 <body>
 <div class="header">
   <div>
-    <div class="logo">Bars <span>CRM</span> <span class="auto-badge" id="auto-badge">Авто: 09:00</span></div>
-    <div class="tag">@dollskills3dart — Lead Agent</div>
+    <div class="logo">Bars <span>CRM</span></div>
+    <div class="tag">@dollskills3dart - Lead Agent</div>
+    <div class="schedule-info">Поиск: каждые 2ч | Рассылка: 09:00 / 12:00 / 15:00 / 18:00 (Алматы)</div>
   </div>
-  <button class="run-btn" id="runBtn" onclick="runAgent()">&#9654; Запустить агента</button>
+  <div class="btn-group">
+    <button class="run-btn run-btn-green" onclick="runSearch()">+ Найти лидов</button>
+    <button class="run-btn" id="runBtn" onclick="runSend()">Отправить письма</button>
+  </div>
 </div>
 <div class="metrics">
-  <div class="metric"><div class="metric-label">Всего лидов</div><div class="metric-value" id="m-total">—</div></div>
-  <div class="metric"><div class="metric-label">Email сегодня</div><div class="metric-value" id="m-email">—</div></div>
-  <div class="metric"><div class="metric-label">Instagram очередь</div><div class="metric-value" id="m-ig">—</div></div>
-  <div class="metric"><div class="metric-label">Без контактов</div><div class="metric-value" id="m-nocontact">—</div></div>
+  <div class="metric"><div class="metric-label">Всего лидов</div><div class="metric-value" id="m-total">-</div></div>
+  <div class="metric"><div class="metric-label">Email сегодня</div><div class="metric-value" id="m-email">-</div></div>
+  <div class="metric"><div class="metric-label">Instagram очередь</div><div class="metric-value" id="m-ig">-</div></div>
+  <div class="metric"><div class="metric-label">Без контактов</div><div class="metric-value" id="m-nocontact">-</div></div>
 </div>
 <div class="two-col">
   <div>
@@ -98,7 +103,7 @@ tr:last-child td { border-bottom: none; }
     </div>
     <div style="margin-top:20px;">
       <div class="section-title">Лог агента</div>
-      <div class="log-box" id="log-box">Нажми "Запустить агента"...</div>
+      <div class="log-box" id="log-box">Ожидание...</div>
     </div>
   </div>
 </div>
@@ -144,8 +149,7 @@ async function loadData(){
     const igHtml = d.ig_queue.length ? d.ig_queue.map((i,idx) => {
       const handle = i.instagram || "";
       const igUrl = "https://instagram.com/" + handle.replace("@","");
-      const pitch = i.pitch || "";
-      const pitchSafe = pitch.replace(/`/g, "'");
+      const pitch = (i.pitch || "").replace(/'/g, "\'");
       return `<div class="ig-item">
         <div class="ig-top">
           <div class="ig-avatar">${initials(i.company)}</div>
@@ -157,13 +161,13 @@ async function loadData(){
         <div class="ig-actions">
           <a href="${igUrl}" target="_blank" class="ig-btn ig-btn-blue">Открыть Instagram</a>
           ${pitch ? `<button class="ig-btn" onclick="togglePitch('${idx}')">Показать текст</button>
-          <button class="ig-btn" onclick="copyText(this, \`${pitchSafe}\`)">Скопировать DM</button>` : ""}
+          <button class="ig-btn" onclick="copyText(this, '${pitch}')">Скопировать DM</button>` : ""}
         </div>
-        ${pitch ? `<div class="ig-pitch" id="pitch-${idx}">${pitch}</div>` : ""}
+        ${pitch ? `<div class="ig-pitch" id="pitch-${idx}">${i.pitch || ""}</div>` : ""}
       </div>`;
     }).join("") : '<div style="padding:20px;color:#555;font-size:13px;">Очередь пуста</div>';
     document.getElementById("ig-list").innerHTML = igHtml;
-    document.getElementById("leads-body").innerHTML=d.leads.length?d.leads.slice().reverse().slice(0,20).map(l=>`<tr><td style="font-weight:500;">${l["Компания"]||"—"}</td><td style="color:#666;">${l["Ниша"]||"—"}</td><td style="color:#666;font-size:12px;">${l["Email"]||"—"}</td><td style="color:#4f8ef7;font-size:12px;">${l["Instagram"]||"—"}</td><td>${badge(l["Статус"])}</td><td style="color:#444;font-size:12px;">${l["Дата добавления"]||"—"}</td></tr>`).join(""):'<tr><td colspan="6" style="text-align:center;color:#555;padding:24px;">Нет лидов</td></tr>';
+    document.getElementById("leads-body").innerHTML=d.leads.length?d.leads.slice().reverse().slice(0,20).map(l=>`<tr><td style="font-weight:500;">${l["Компания"]||"-"}</td><td style="color:#666;">${l["Ниша"]||"-"}</td><td style="color:#666;font-size:12px;">${l["Email"]||"-"}</td><td style="color:#4f8ef7;font-size:12px;">${l["Instagram"]||"-"}</td><td>${badge(l["Статус"])}</td><td style="color:#444;font-size:12px;">${l["Дата добавления"]||"-"}</td></tr>`).join(""):'<tr><td colspan="6" style="text-align:center;color:#555;padding:24px;">Нет лидов</td></tr>';
   }catch(e){}
 }
 async function loadLog(){
@@ -174,71 +178,157 @@ async function loadLog(){
     b.scrollTop=b.scrollHeight;
   }catch(e){}
 }
-async function runAgent(){
+async function runSearch(){
+  await fetch("/api/run-search", {method:"POST"});
+  setTimeout(loadLog, 2000);
+  setInterval(loadLog, 4000);
+}
+async function runSend(){
   const btn=document.getElementById("runBtn");
   btn.disabled=true;
-  btn.innerHTML='<span class="spinner"></span> Запускается...';
-  try{
-    await fetch("/api/run",{method:"POST"});
-    setTimeout(pollStatus,2000);
-  }catch(e){
+  btn.innerHTML='<span class="spinner"></span> Отправляю...';
+  await fetch("/api/run-send", {method:"POST"});
+  setTimeout(() => {
     btn.disabled=false;
-    btn.innerHTML='&#9654; Запустить агента';
-  }
+    btn.innerHTML='Отправить письма';
+    loadData();
+  }, 5000);
 }
-async function pollStatus(){
-  try{
-    const d=await (await fetch("/api/status")).json();
-    loadLog();
-    if(d.running){ setTimeout(pollStatus,3000); }
-    else{
-      const btn=document.getElementById("runBtn");
-      btn.disabled=false;
-      btn.innerHTML='&#9654; Запустить агента';
-      loadData();
-    }
-  }catch(e){}
-}
-loadData(); loadLog(); setInterval(loadData,30000);
+loadData(); loadLog(); setInterval(loadData, 30000); setInterval(loadLog, 10000);
 </script>
 </body>
 </html>"""
 
 
-def _run_agent_thread():
-    global agent_running, agent_log
+def search_only():
+    """Только поиск и добавление новых лидов - без отправки."""
+    global agent_log, agent_running
     agent_running = True
-    agent_log = []
     try:
-        import agent as agent_module
+        import finder, pitcher, sheets
         import io
         from contextlib import redirect_stdout
+
         f = io.StringIO()
         with redirect_stdout(f):
-            agent_module.run()
+            from datetime import date as d
+            print(f"[search] Поиск новых лидов - {d.today()}")
+            existing = sheets.get_existing_names()
+            new_leads = finder.find_and_enrich(existing, count=20)
+            added = 0
+            for lead in new_leads:
+                if lead.get("company") in existing:
+                    continue
+                if lead.get("email"):
+                    try:
+                        lead["pitch_email"] = pitcher.generate_pitch(lead, channel="email")
+                        lead["email_subject"] = pitcher.generate_subject(lead)
+                    except Exception as e:
+                        print(f"[search] Ошибка питча: {e}")
+                        lead["pitch_email"] = ""
+                if lead.get("instagram"):
+                    try:
+                        lead["pitch_instagram"] = pitcher.generate_pitch(lead, channel="instagram")
+                    except:
+                        lead["pitch_instagram"] = ""
+                sheets.add_lead(lead)
+                existing.append(lead.get("company"))
+                added += 1
+                time.sleep(1)
+            print(f"[search] Добавлено: {added} лидов")
+
         agent_log = f.getvalue().splitlines()
     except Exception as e:
-        agent_log = [f"Ошибка: {e}"]
+        agent_log = [f"Ошибка поиска: {e}"]
     finally:
         agent_running = False
 
 
+def send_only(limit=5):
+    """Только отправка писем - без поиска."""
+    global agent_log
+    try:
+        import sender, sheets, pitcher
+        import io
+        from contextlib import redirect_stdout
+        from datetime import date as d
+
+        f = io.StringIO()
+        with redirect_stdout(f):
+            print(f"[send] Отправка {limit} писем - {d.today()}")
+            to_contact = sheets.get_leads_to_contact()
+            print(f"[send] В очереди: {len(to_contact)}")
+            sent = 0
+            for lead in to_contact:
+                if sent >= limit:
+                    break
+                company = lead.get("Компания", "")
+                if lead.get("Email") and sender.can_send_email():
+                    pitch = lead.get("Питч (email)", "")
+                    subject = f"AI-видео и 3D реклама для {company}"
+                    if not pitch:
+                        try:
+                            pitch = pitcher.generate_pitch({
+                                "company": company,
+                                "region": lead.get("Регион", "RU"),
+                                "city": lead.get("Город", ""),
+                                "niche": lead.get("Ниша", ""),
+                                "notes": lead.get("Заметки", ""),
+                            }, channel="email")
+                            subject = pitcher.generate_subject({
+                                "company": company,
+                                "region": lead.get("Регион", "RU"),
+                                "niche": lead.get("Ниша", ""),
+                            })
+                            sheets.update_pitch(company, pitch_email=pitch)
+                        except Exception as e:
+                            print(f"[send] Ошибка питча {company}: {e}")
+                            continue
+                    ok = sender.send_email(lead["Email"], subject, pitch)
+                    if ok:
+                        sheets.update_status(company, sheets.STATUS_SENT, str(d.today()))
+                        sent += 1
+                        time.sleep(2)
+            print(f"[send] Отправлено: {sent}")
+
+        agent_log += f.getvalue().splitlines()
+    except Exception as e:
+        agent_log += [f"Ошибка отправки: {e}"]
+
+
 def _scheduler():
-    """Фоновый поток - запускает агента каждый день в 09:00 по Алматы (UTC+5)."""
-    global last_run_date
-    print("[scheduler] Запущен - агент будет стартовать в 09:00 Алматы")
+    """
+    Расписание по Алматы (UTC+5):
+    - Поиск лидов: каждые 2 часа
+    - Отправка: 09:00, 12:00, 15:00, 18:00
+    """
+    last_search_hour = -1
+    last_send_key = ""
+    print("[scheduler] Запущен")
     while True:
-        now = datetime.utcnow()
-        almaty_hour = (now.hour + 5) % 24
+        now_utc = datetime.utcnow()
+        almaty_hour = (now_utc.hour + 5) % 24
+        almaty_minute = now_utc.minute
         today = str(date.today())
-        if almaty_hour == 9 and last_run_date != today and not agent_running:
-            print(f"[scheduler] Автозапуск агента {today}")
-            last_run_date = today
-            threading.Thread(target=_run_agent_thread, daemon=True).start()
-        time.sleep(60)
+
+        # Поиск каждые 2 часа
+        if almaty_hour % 2 == 0 and almaty_minute == 0 and almaty_hour != last_search_hour:
+            last_search_hour = almaty_hour
+            if not agent_running:
+                print(f"[scheduler] Автопоиск {almaty_hour}:00")
+                threading.Thread(target=search_only, daemon=True).start()
+
+        # Отправка 4 раза в день по 5 писем
+        send_hours = [9, 12, 15, 18]
+        send_key = f"{today}-{almaty_hour}"
+        if almaty_hour in send_hours and almaty_minute == 0 and send_key != last_send_key:
+            last_send_key = send_key
+            print(f"[scheduler] Автоотправка {almaty_hour}:00")
+            threading.Thread(target=lambda: send_only(5), daemon=True).start()
+
+        time.sleep(30)
 
 
-# Запускаем scheduler при старте приложения
 threading.Thread(target=_scheduler, daemon=True).start()
 
 
@@ -288,13 +378,18 @@ def api_status():
     return jsonify({"running": agent_running})
 
 
-@app.route("/api/run", methods=["POST"])
-def api_run():
-    global agent_running
+@app.route("/api/run-search", methods=["POST"])
+def api_run_search():
     if agent_running:
         return jsonify({"status": "already_running"})
-    threading.Thread(target=_run_agent_thread, daemon=True).start()
-    return jsonify({"status": "started"})
+    threading.Thread(target=search_only, daemon=True).start()
+    return jsonify({"status": "search_started"})
+
+
+@app.route("/api/run-send", methods=["POST"])
+def api_run_send():
+    threading.Thread(target=lambda: send_only(5), daemon=True).start()
+    return jsonify({"status": "send_started"})
 
 
 if __name__ == "__main__":
