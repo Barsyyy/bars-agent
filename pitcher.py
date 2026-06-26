@@ -7,7 +7,8 @@ import config
 
 client = Anthropic(api_key=config.ANTHROPIC_API_KEY)
 
-PORTFOLIO = "https://www.behance.net/dollskills3dart"
+PORTFOLIO = "https://www.youtube.com/shorts/dbYgjtS_q0c"
+PORTFOLIO_VFX = "https://vimeo.com/1150965452"
 PORTFOLIO_CASES = "Dizzy Energy x Helios, Nornickel, Nestle"
 
 
@@ -28,13 +29,13 @@ def generate_pitch(lead: dict, channel: str = "email") -> str:
         studio_intro = "студия Bars Production (Алматы) - AI-видео и 3D реклама для брендов"
         cases = f"среди клиентов - {PORTFOLIO_CASES}"
         ig_handle = "@dollskills3dart"
-        portfolio_line = f"Портфолио: {PORTFOLIO}"
+                portfolio_line = f"AI-видео: {PORTFOLIO} | VFX: {PORTFOLIO_VFX}"
     else:
         lang_instruction = "Write in English."
         studio_intro = "Bars Production studio (Almaty) - AI video & 3D advertising for brands"
         cases = f"clients include {PORTFOLIO_CASES}"
         ig_handle = "@dollskills3dart"
-        portfolio_line = f"Portfolio: {PORTFOLIO}"
+                portfolio_line = f"AI video: {PORTFOLIO} | VFX: {PORTFOLIO_VFX}"
 
     if channel == "email":
         format_instruction = f"""
