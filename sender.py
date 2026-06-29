@@ -143,6 +143,13 @@ def _get_gmail_service():
         client_secret=creds_data.get("client_secret"),
         scopes=creds_data.get("scopes", SCOPES_GMAIL),
     )
+    # Авторефреш токена если истёк (access token живёт 1 час)
+    if not creds.valid:
+        if creds.expired and creds.refresh_token:
+            from google.auth.transport.requests import Request
+            creds.refresh(Request())
+        else:
+            raise Exception("Gmail токен полностью истёк — нужна повторная OAuth-авторизация. Запусти локально и обнови GMAIL_TOKEN_JSON.")
     return build("gmail", "v1", credentials=creds)
 
 
