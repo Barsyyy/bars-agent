@@ -306,13 +306,16 @@ def _scheduler():
     last_send_key = ""
     print("[scheduler] Запущен")
     while True:
-        now_utc = datetime.utcnow()
-        almaty_hour = (now_utc.hour + 5) % 24
-        almaty_minute = now_utc.minute
-        today = str(date.today())
+        # Алматинское время UTC+5 — дата тоже берётся по Алматы, не по серверу
+        from datetime import timezone, timedelta
+        _ALMATY_TZ = timezone(timedelta(hours=5))
+        now_almaty = datetime.now(_ALMATY_TZ)
+        almaty_hour = now_almaty.hour
+        almaty_minute = now_almaty.minute
+        today = str(now_almaty.date())
 
         # Поиск каждые 2 часа
-        if almaty_hour % 2 == 0 and almaty_minute == 0 and almaty_hour != last_search_hour:
+        if almaty_hour % 2 == 0 and almaty_minute < 2 and almaty_hour != last_search_hour:
             last_search_hour = almaty_hour
             if not agent_running:
                 print(f"[scheduler] Автопоиск {almaty_hour}:00")
@@ -321,7 +324,7 @@ def _scheduler():
         # Отправка 4 раза в день по 5 писем
         send_hours = [9, 12, 15, 18]
         send_key = f"{today}-{almaty_hour}"
-        if almaty_hour in send_hours and almaty_minute == 0 and send_key != last_send_key:
+        if almaty_hour in send_hours and almaty_minute < 2 and send_key != last_send_key:
             last_send_key = send_key
             print(f"[scheduler] Автоотправка {almaty_hour}:00")
             threading.Thread(target=lambda: send_only(5), daemon=True).start()
