@@ -232,37 +232,37 @@ def mark_instagram_sent(instagram_handle):
 def send_followup_email(to_email, company_name, contact_name):
         """Отправляет повторное письмо через 7 дней"""
         try:
-                    creds = get_gmail_credentials()
-                    service = build('gmail', 'v1', credentials=creds)
+            creds = get_gmail_credentials()
+            service = build('gmail', 'v1', credentials=creds)
 
-        name_part = contact_name if contact_name else 'Добрый день'
+            name_part = contact_name if contact_name else 'Добрый день'
 
-            body = f"""{name_part},
+                body = f"""{name_part},
 
-            неделю назад я отправлял вам письмо с предложением по AI-видео и 3D-рекламе для {company_name}.
+                неделю назад я отправлял вам письмо с предложением по AI-видео и 3D-рекламе для {company_name}.
 
-            Хотел уточнить — актуально ли это для вас сейчас? Буду рад ответить на любые вопросы.
+                Хотел уточнить — актуально ли это для вас сейчас? Буду рад ответить на любые вопросы.
 
-            С уважением,
-            Антон
-            Bars Production | @dollskills3dart
-            """
+                С уважением,
+                Антон
+                Bars Production | @dollskills3dart
+                """
 
-        message = MIMEMultipart()
-        message['To'] = to_email
-        message['From'] = 'dollskills@gmail.com'
-        message['Subject'] = f'Повторно: AI-видео для {company_name}'
-        message.attach(MIMEText(body, 'plain', 'utf-8'))
+            message = MIMEMultipart()
+            message['To'] = to_email
+            message['From'] = 'dollskills@gmail.com'
+            message['Subject'] = f'Повторно: AI-видео для {company_name}'
+            message.attach(MIMEText(body, 'plain', 'utf-8'))
 
-        raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
-        service.users().messages().send(
-                        userId='me',
-                        body={'raw': raw}
-        ).execute()
+            raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
+            service.users().messages().send(
+                            userId='me',
+                            body={'raw': raw}
+            ).execute()
 
-        print(f"[sender] Followup отправлен: {to_email}")
-        return True
+            print(f"[sender] Followup отправлен: {to_email}")
+            return True
 
-except Exception as e:
-        print(f"[sender] Ошибка followup {to_email}: {e}")
-        return False
+        except Exception as e:
+            print(f"[sender] Ошибка followup {to_email}: {e}")
+            return False
