@@ -18,8 +18,8 @@ HEADERS = {
 }
 
 def scrape_website(url: str) -> dict:
-        """Парсит сайт компании - ищет реальные контакты."""
-        result = {"email": "", "instagram": "", "found": False}
+    """Парсит сайт компании - ищет реальные контакты."""
+    result = {"email": "", "instagram": "", "found": False}
 
     if not url or not url.startswith("http"):
                 return result
