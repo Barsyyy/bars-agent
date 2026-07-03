@@ -22,70 +22,70 @@ def scrape_website(url: str) -> dict:
     result = {"email": "", "instagram": "", "found": False}
 
     if not url or not url.startswith("http"):
-                return result
+        return result
 
     base = url.rstrip("/")
     pages_to_check = [
-                base,
-                base + "/contacts",
-                base + "/contact",
-                base + "/about",
-                base + "/kontakty",
-                base + "/o-nas",
-                base + "/about-us",
-                base + "/kontakt",
-                base + "/team",
-                base + "/ru/contacts",
-                base + "/ru/contact",
+        base,
+        base + "/contacts",
+        base + "/contact",
+        base + "/about",
+        base + "/kontakty",
+        base + "/o-nas",
+        base + "/about-us",
+        base + "/kontakt",
+        base + "/team",
+        base + "/ru/contacts",
+        base + "/ru/contact",
     ]
 
     for page_url in pages_to_check:
-                try:
-                                r = requests.get(page_url, headers=HEADERS, timeout=8)
-                                if r.status_code != 200:
-                                                    continue
+        try:
+            r = requests.get(page_url, headers=HEADERS, timeout=8)
+            if r.status_code != 200:
+                continue
 
-                                soup = BeautifulSoup(r.text, "lxml")
+            soup = BeautifulSoup(r.text, "lxml")
 
-                    # Ищем mailto ссылки
-                                for a in soup.find_all("a", href=True):
-                                                    href = a["href"]
-                                                    if href.startswith("mailto:"):
-                                                                            email = href.replace("mailto:", "").split("?")[0].strip()
-                                                                            if email and "@" in email and not result["email"]:
-                                                                                                        skip = {"example", "yourdomain", "noreply", "no-reply", "test"}
-                                                                                                        if not any(s in email.lower() for s in skip):
-                                                                                                                                        result["email"] = email
-                                                                                                                                        result["found"] = True
-                                                                                                            
-                                                                                            text = soup.get_text(" ", strip=True)
-                                                                    html = r.text
+            # Ищем mailto ссылки
+            for a in soup.find_all("a", href=True):
+                href = a["href"]
+                if href.startswith("mailto:"):
+                    email = href.replace("mailto:", "").split("?")[0].strip()
+                    if email and "@" in email and not result["email"]:
+                        skip = {"example", "yourdomain", "noreply", "no-reply", "test"}
+                        if not any(s in email.lower() for s in skip):
+                            result["email"] = email
+                            result["found"] = True
 
-                                if not result["email"]:
-                                                    emails = re.findall(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}", text)
-                                                    skip = {"example", "yourdomain", "domain", "email", "mail", "test", "noreply", "no-reply", "support@sentry"}
-                                                    clean = [e for e in emails if not any(s in e.lower() for s in skip)]
-                                                    if clean:
-                                                                            result["email"] = clean[0]
-                                                                            result["found"] = True
+            text = soup.get_text(" ", strip=True)
+            html = r.text
 
-                                                if not result["instagram"]:
-                                                                    ig = re.findall(r'instagram\.com/([a-zA-Z0-9_.]+)', html)
-                                                                    ig = [h for h in ig if h not in ("p", "reel", "stories", "explore", "accounts", "shoppingbag")]
-                                                                    if ig:
-                                                                                            result["instagram"] = "@" + ig[0]
-                                                                                            result["found"] = True
+            if not result["email"]:
+                emails = re.findall(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}", text)
+                skip = {"example", "yourdomain", "domain", "email", "mail", "test", "noreply", "no-reply", "support@sentry"}
+                clean = [e for e in emails if not any(s in e.lower() for s in skip)]
+                if clean:
+                    result["email"] = clean[0]
+                    result["found"] = True
 
-                                                                if result["email"] and result["instagram"]:
-                                                                                    break
+            if not result["instagram"]:
+                ig = re.findall(r'instagram\.com/([a-zA-Z0-9_.]+)', html)
+                ig = [h for h in ig if h not in ("p", "reel", "stories", "explore", "accounts", "shoppingbag")]
+                if ig:
+                    result["instagram"] = "@" + ig[0]
+                    result["found"] = True
 
-                                time.sleep(0.5)
+            if result["email"] and result["instagram"]:
+                break
 
-                except Exception as e:
-                                print(f"[finder] Ошибка парсинга {page_url}: {e}")
-                                continue
+            time.sleep(0.5)
 
-            return result
+        except Exception as e:
+            print(f"[finder] Ошибка парсинга {page_url}: {e}")
+            continue
+
+    return result
 
 
 def find_new_companies(existing_names: list[str], count: int = 20) -> list[dict]:
