@@ -29,13 +29,13 @@ def generate_pitch(lead: dict, channel: str = "email") -> str:
         studio_intro = "студия Bars Production (Алматы) - AI-видео и 3D реклама для брендов"
         cases = f"среди клиентов - {PORTFOLIO_CASES}"
         ig_handle = "@dollskills3dart"
-                portfolio_line = f"AI-видео: {PORTFOLIO} | VFX: {PORTFOLIO_VFX}"
+        portfolio_line = f"AI-видео: {PORTFOLIO} | VFX: {PORTFOLIO_VFX}"
     else:
         lang_instruction = "Write in English."
         studio_intro = "Bars Production studio (Almaty) - AI video & 3D advertising for brands"
         cases = f"clients include {PORTFOLIO_CASES}"
         ig_handle = "@dollskills3dart"
-                portfolio_line = f"AI video: {PORTFOLIO} | VFX: {PORTFOLIO_VFX}"
+        portfolio_line = f"AI video: {PORTFOLIO} | VFX: {PORTFOLIO_VFX}"
 
     if channel == "email":
         format_instruction = f"""
