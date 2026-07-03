@@ -89,7 +89,7 @@ def scrape_website(url: str) -> dict:
 
 
 def find_new_companies(existing_names: list[str], count: int = 20) -> list[dict]:
-        exclude = ", ".join(existing_names[-50:]) if existing_names else "нет"
+    exclude = ", ".join(existing_names[-50:]) if existing_names else "нет"
 
     prompt = f"""Ты агент поиска лидов для студии Bars Production (AI-видео и 3D реклама, Алматы).
 
@@ -111,52 +111,52 @@ def find_new_companies(existing_names: list[str], count: int = 20) -> list[dict]
 
     Ответь СТРОГО в JSON, без markdown:
     [
-      {{
-          "company": "Название",
-              "region": "KZ|RU|UZ|BY|GE|AM",
-                  "city": "Город",
-                      "niche": "Ниша",
-                          "priority": "Высокий|Средний",
-                              "website": "https://...",
-                                  "instagram_handle": "@handle или пусто",
-                                      "notes": "почему подходят"
-  }}
-  ]"""
+    {{
+        "company": "Название",
+        "region": "KZ|RU|UZ|BY|GE|AM",
+        "city": "Город",
+        "niche": "Ниша",
+        "priority": "Высокий|Средний",
+        "website": "https://...",
+        "instagram_handle": "@handle или пусто",
+        "notes": "почему подходят"
+    }}
+    ]"""
 
     response = client.messages.create(
-                model="claude-haiku-4-5",
-                max_tokens=4000,
-                messages=[{"role": "user", "content": prompt}]
+        model="claude-haiku-4-5",
+        max_tokens=4000,
+        messages=[{"role": "user", "content": prompt}]
     )
 
     text = response.content[0].text.strip()
     text = re.sub(r"```json|```", "", text).strip()
 
     try:
-                import json
-                companies = json.loads(text)
-                return companies
-except Exception as e:
-            print(f"[finder] Ошибка парсинга JSON от Claude: {e}")
-            return []
+        import json
+        companies = json.loads(text)
+        return companies
+    except Exception as e:
+        print(f"[finder] Ошибка парсинга JSON от Claude: {e}")
+        return []
 
 
 def enrich_lead(lead: dict) -> dict:
-        website = lead.get("website", "")
-        company = lead.get("company", "")
+    website = lead.get("website", "")
+    company = lead.get("company", "")
 
     # Парсим сайт - только реальные контакты
-        contacts = scrape_website(website)
+    contacts = scrape_website(website)
 
     # Instagram из подсказки Claude если парсер не нашёл
     if not contacts["instagram"]:
-                ig_hint = lead.get("instagram_handle", "")
-                if ig_hint and ig_hint.startswith("@"):
-                                contacts["instagram"] = ig_hint
-                                if contacts["email"]:
-                                                    contacts["found"] = True
+        ig_hint = lead.get("instagram_handle", "")
+        if ig_hint and ig_hint.startswith("@"):
+            contacts["instagram"] = ig_hint
+            if contacts["email"]:
+                contacts["found"] = True
 
-                        lead["email"] = contacts["email"]
+    lead["email"] = contacts["email"]
     lead["instagram"] = contacts["instagram"]
     lead["contacts_found"] = contacts["found"]
     lead["status"] = "Не писал"
@@ -166,13 +166,13 @@ def enrich_lead(lead: dict) -> dict:
 
 
 def find_and_enrich(existing_names: list[str], count: int = 20) -> list[dict]:
-        print(f"[finder] Ищу {count} новых компаний...")
+    print(f"[finder] Ищу {count} новых компаний...")
     companies = find_new_companies(existing_names, count)
     print(f"[finder] Найдено: {len(companies)}")
 
     enriched = []
     for c in companies:
-                lead = enrich_lead(c)
+        lead = enrich_lead(c)
         enriched.append(lead)
         time.sleep(1)
 
