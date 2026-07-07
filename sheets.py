@@ -170,57 +170,57 @@ def get_leads_to_contact() -> list[dict]:
     ]
 
 def get_leads_for_followup():
-        """Возвращает лиды где прошло 7 дней и нет ответа и не было повторного письма"""
-        try:
-                    sheet = get_sheet()
-                    rows = sheet.get_all_records()
-                    result = []
-                    today = datetime.now().date()
+    """Возвращает лиды где прошло 7 дней и нет ответа и не было повторного письма"""
+    try:
+        sheet = get_sheet()
+        rows = sheet.get_all_records()
+        result = []
+        today = datetime.now().date()
 
         for i, row in enumerate(rows):
-                        sent_date_str = row.get('sent_date', '')
-                        status = row.get('status', '')
-                        followup_sent = row.get('followup_sent', '')
-                        email = row.get('email', '')
+            sent_date_str = row.get('sent_date', '')
+            status = row.get('status', '')
+            followup_sent = row.get('followup_sent', '')
+            email = row.get('email', '')
 
             if not sent_date_str or not email:
-                                continue
-                            if status in ['Ответил', 'Отказ']:
-                                                continue
-                                            if followup_sent:
-                                                                continue
-
-            try:
-                                sent_date = datetime.strptime(sent_date_str, '%Y-%m-%d').date()
-                            except:
+                continue
+            if status in ['Ответил', 'Отказ']:
+                continue
+            if followup_sent:
                 continue
 
-                                            if (today - sent_date).days >= 7:
-                                                                result.append({
-                                                                                        'row_index': i + 2,
-                                                                                        'company': row.get('company', ''),
-                                                                                        'email': email,
-                                                                                        'name': row.get('contact_name', ''),
-                                                                })
+            try:
+                sent_date = datetime.strptime(sent_date_str, '%Y-%m-%d').date()
+            except:
+                continue
+
+            if (today - sent_date).days >= 7:
+                result.append({
+                    'row_index': i + 2,
+                    'company': row.get('company', ''),
+                    'email': email,
+                    'name': row.get('contact_name', ''),
+                })
 
         return result
-except Exception as e:
+    except Exception as e:
         print(f"[sheets] Ошибка get_leads_for_followup: {e}")
         return []
 
 
 def mark_followup_sent(row_index):
-        """Ставит дату в колонку followup_sent"""
+    """Ставит дату в колонку followup_sent"""
     try:
-                sheet = get_sheet()
+        sheet = get_sheet()
         headers = sheet.row_values(1)
         if 'followup_sent' not in headers:
-                        col = len(headers) + 1
-                        sheet.update_cell(1, col, 'followup_sent')
-else:
+            col = len(headers) + 1
+            sheet.update_cell(1, col, 'followup_sent')
+        else:
             col = headers.index('followup_sent') + 1
 
         sheet.update_cell(row_index, col, datetime.now().strftime('%Y-%m-%d'))
         print(f"[sheets] Followup отмечен для строки {row_index}")
-except Exception as e:
+    except Exception as e:
         print(f"[sheets] Ошибка mark_followup_sent: {e}")
