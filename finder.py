@@ -9,6 +9,7 @@ import time
 import requests
 from bs4 import BeautifulSoup
 from anthropic import Anthropic
+from gis_finder import find_contacts_for_lead
 import config
 
 client = Anthropic(api_key=config.ANTHROPIC_API_KEY)
@@ -159,6 +160,16 @@ def enrich_lead(lead: dict) -> dict:
     lead["email"] = contacts["email"]
     lead["instagram"] = contacts["instagram"]
     lead["contacts_found"] = contacts["found"]
+
+    # Если email не найден локально - пробуем найти через 2GIS (СНГ)
+    if not lead["email"] and config.GIS_API_KEY:
+        region = lead.get("region", "KZ").lower()
+        gis_contacts = find_contacts_for_lead(company, region, config.GIS_API_KEY)
+        if gis_contacts.get("email"):
+            lead["email"] = gis_contacts["email"]
+            lead["contacts_found"] = True
+        if gis_contacts.get("phone"):
+            lead["phone"] = gis_contacts["phone"]
     lead["status"] = "Не писал"
 
     print(f"[finder] {company}: email={'ok' if lead['email'] else '-'}, ig={'ok' if lead['instagram'] else '-'}")
