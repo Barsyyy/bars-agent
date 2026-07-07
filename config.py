@@ -48,3 +48,6 @@ SEARCH_NICHES = [
 ]
 
 SEARCH_REGIONS = ["Алматы", "Астана", "Москва", "Санкт-Петербург", "Ташкент", "Минск"]
+
+# 2GIS API (поиск контактов по СНГ)
+GIS_API_KEY = os.getenv("GIS_API_KEY", "")
